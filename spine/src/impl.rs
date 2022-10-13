@@ -3,6 +3,7 @@ use std::{
     fs::File,
     io::{BufReader, Read},
     os::raw::{c_char, c_int, c_void},
+    mem::forget
 };
 
 use image::{DynamicImage, GenericImageView};
@@ -13,7 +14,7 @@ use super::{error::Error, result::Result};
 #[no_mangle]
 pub extern "C" fn _spUtil_readFile(path: *const c_char, length: *mut c_int) -> *const c_char {
     #[inline]
-    fn read_text_file(path: *const c_char) -> Result<CString> {
+    fn read_file(path: *const c_char) -> Result<Vec<u8>> {
         let path = to_str(path)?;
 
         let file = File::open(path)?;
@@ -23,22 +24,24 @@ pub extern "C" fn _spUtil_readFile(path: *const c_char, length: *mut c_int) -> *
 
         reader.read_to_end(&mut bytes)?;
 
-        let text = CString::new(bytes)?;
-
-        Ok(text)
+        Ok(bytes)
     }
 
-    let text = match read_text_file(path) {
-        Ok(text) => text,
+    let data = match read_file(path) {
+        Ok(data) => data,
         Err(error) => {
-            eprintln!("{}", error);
+            eprintln!("_spUtil_readFile: {}", error);
             return std::ptr::null();
         }
     };
 
+    let data_ptr = data.as_ptr() as *const c_char;
+    let data_length = data.len() as c_int;
+    forget(data);
+
     unsafe {
-        *length = text.to_bytes().len() as c_int;
-        text.into_raw()
+        *length = data_length;
+        data_ptr
     }
 }
 
